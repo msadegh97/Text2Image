@@ -52,7 +52,7 @@ class Generator(nn.Module):
 
 class Critic(nn.Module):
     def __init__(self, num_channel= 3, img_size= 64, proj_embed_dim = 256, embed_dim= 1024):
-        super(Discriminator, self).__init__()
+        super(Critic, self).__init__()
         self.ndf = 64
         self.num_channel = num_channel
         self.image_size = img_size
