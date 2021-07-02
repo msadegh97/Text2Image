@@ -4,7 +4,7 @@ from torch import  nn
 
 # code is based on Pytorch DCGAN Implementation:
 class Generator(nn.Module):
-    def __init__(self, z_dim = 100, num_channels =3, embed_dim=1024, img_size= 64, proj_ebmed_dim = 256):
+    def __init__(self, z_dim = 100, num_channels =3, embed_dim=1024, img_size= 64, proj_ebmed_dim = 128):
         super(Generator, self).__init__()
         self.z_dim = z_dim
         self.embed_dim = embed_dim

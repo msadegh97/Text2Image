@@ -13,6 +13,7 @@ from tensorflow.python.platform import flags
 
 FLAGS = flags.FLAGS
 
+
 flags.DEFINE_integer('ngpu', 1, 'number of GPUs')
 flags.DEFINE_string('dataset', 'birds', 'name of dataset (birds or flowers)')
 flags.DEFINE_integer('z_dim', 100, 'Input noise dimension')
@@ -25,13 +26,20 @@ flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 
 flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
-flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
+flags.DEFINE_integer("proj_embed_dim", 128, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
 flags.DEFINE_integer("log_interval", 10, 'log intervals (steps)')
 
-
+flags.DEFINE_bool("wandb", False, "Using wandb for logging")
 flags.DEFINE_string('wandb_key', '', 'wandb key for logging')
+
+
+flags.DEFINE_string("pre_trained_critic", '', 'pretrained critic path')
+flags.DEFINE_string("pre_trained_generator", '', 'pretrained generator path')
+flags.DEFINE_string("experiment_name", 'exp', 'the experiment name')
+flags.DEFINE_bool("inter", True, "embedding interpolation")
+
 
 
 
@@ -39,9 +47,8 @@ FLAGS = flags.FLAGS
 
 
 def train(FLAGS):
-    wandb_flag = True # TODO add to flag with project name and other things
-    if wandb_flag:
-        run = wandb.init(project="Text2Image_C_DCGAN", config=FLAGS)
+    if FLAGS.wandb:
+        run = wandb.init(project="Text2Image_C_DCGAN", config=FLAGS, name= FLAGS.experiment_name)
 
 
     dataset_add = '../dataset/'
@@ -75,6 +82,8 @@ def train(FLAGS):
             right_images = sample['right_images']
             right_embed = sample['right_embed']
             wrong_images = sample['wrong_images']
+            int_embed = sample['inter_embed']
+            txt = sample['txt']
 
             right_images = Variable(right_images.float()).cuda()
             right_embed = Variable(right_embed.float()).cuda()
@@ -122,38 +131,54 @@ def train(FLAGS):
             outputs = discriminator(fake_images, right_embed)
             g_loss = criterion(outputs, real_labels)
 
+            if FLAGS.inter:
+                noise = Variable(torch.randn(int_embed.size(0), 100)).cuda()
+                noise = noise.view(noise.size(0), 100, 1, 1)
+                fake_images_int = generator(noise, int_embed)
+                outputs_int = discriminator(fake_images_int, int_embed)
+                g_loss = 0.5 * (criterion(outputs_int, real_labels) + g_loss)
+
             g_loss.backward()
             G_optimizer.step()
 
-            if iteration % FLAGS.log_interval == 0:
-                run.log({"Generator Loss": g_loss.mean(),
-                         "Discriminator Loss": d_loss.mean(),
-                         "Real Score": real_score.mean(),
-                         "Fake Score": fake_score.mean()})
-                real_image_grid = make_grid(right_images, nrow=8, pad_value=1)
-                fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
-                _real_img = wandb.Image(real_image_grid, caption="real_images")
-                _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
+            if FLAGS.wandb:
+                if iteration % FLAGS.log_interval == 0:
+                    run.log({"Generator Loss": g_loss.mean(),
+                             "Discriminator Loss": d_loss.mean(),
+                             "Real Score": real_score.mean(),
+                             "Fake Score": fake_score.mean()})
+                    real_image_grid = make_grid(right_images, nrow=8, pad_value=1)
+                    fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
+                    _real_img = wandb.Image(real_image_grid, caption="real_images")
+                    _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
 
-                run.log({"real_img": _real_img})
-                run.log({"fake_img": _fake_img})
+                    run.log({"real_img": _real_img})
+                    run.log({"fake_img": _fake_img})
+                    run.log({"txt": txt})
 
 
+        print(epoch)
+        if FLAGS.wandb:
+            run.log({"Generator Loss_e": g_loss.mean(),
+                     "Discriminator Loss_e": d_loss.mean(),
+                     "Real Score_e": real_score.mean(),
+                     "Fake Score_e": fake_score.mean()})
 
         if (epoch) % FLAGS.cp_interval == 0:
-            utils.save_checkpoint(discriminator, generator, FLAGS.checkpoints_path, epoch)
+            utils.save_checkpoint(discriminator, generator, FLAGS.checkpoints_path, epoch, FLAGS)
 
 def main():
     flags_dict = EasyDict()
 
+
     for key in dir(FLAGS):
         flags_dict[key] = getattr(FLAGS, key)
-    # if flags_dict.wandb_key != '':
-    os.environ['WANDB_API_KEY'] = "7a44e6f35f9bf51e15cefc85c9c65093fc9c5d87" #flags_dict.wandb_key
-        # os.environ["WANDB_MODE"] = "dryrun"
-    os.environ['WANDB_CONFIG_DIR'] = '/home/hlcv_team019/code/'
+    if flags_dict.wandb:
+        os.environ['WANDB_API_KEY'] = "7a44e6f35f9bf51e15cefc85c9c65093fc9c5d87"  #TODO replace with FLAGS.wandb_key
+        os.environ['WANDB_CONFIG_DIR'] = '/home/hlcv_team019/code/'
 
     train(flags_dict)
+
 
 
 
