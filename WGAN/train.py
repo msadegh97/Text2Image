@@ -24,7 +24,11 @@ flags.DEFINE_integer('num_workers', 2, 'number of workers')
 flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 flags.DEFINE_integer("critic_repeats", 5, 'critic opt / generator opt')
+<<<<<<< HEAD
 flags.DEFINE_float("lambda1",10.0, "Gradient Penalty Coef")
+=======
+flags.DEFINE_float("labmda1",10.0, "Gradient Penalty Coef")
+>>>>>>> 8e8cad6174fbc2b17d54b73808ab336a54b10a62
 flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
