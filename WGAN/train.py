@@ -61,7 +61,7 @@ def grad_penalty(critic, real_img, fake_img, embed, epsilon):
 
 def train(FLAGS):
     if FLAGS.wandb:
-        run = wandb.init(project="Text2Image_CON_DCGAN", config=FLAGS, name=FLAGS.experiment_name)
+        run = wandb.init(project="Text2Image_CON_WGAN", config=FLAGS, name=FLAGS.experiment_name)
 
     imsize = 64
     image_transform = transforms.Compose([
