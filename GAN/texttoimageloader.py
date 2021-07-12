@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 from PIL import Image
 import torch
+import torchvision.transforms as transforms
 
 class Text2ImageDataset(Dataset):
 
@@ -14,6 +15,9 @@ class Text2ImageDataset(Dataset):
         self.dataset_keys = None
         self.split = 'train' if split == 0 else 'valid' if split == 1 else 'test'
         self.h5py2int = lambda x: int(np.array(x))
+        self.norm = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
     def __len__(self):
         f = h5py.File(self.datasetFile, 'r')
@@ -37,24 +41,29 @@ class Text2ImageDataset(Dataset):
         wrong_image = bytes(np.array(self.find_wrong_image(example['class'])))
         inter_embed = np.array(self.find_inter_embed())
 
-        right_image = Image.open(io.BytesIO(right_image)).resize((64, 64))
-        wrong_image = Image.open(io.BytesIO(wrong_image)).resize((64, 64))
+        right_image = Image.open(io.BytesIO(right_image)).resize((64, 64)).convert('RGB')
+        wrong_image = Image.open(io.BytesIO(wrong_image)).resize((64, 64)).convert('RGB')
 
-        right_image = self.validate_image(right_image)
-        wrong_image = self.validate_image(wrong_image)
+        # right_image = self.validate_image(right_image)
+        # wrong_image = self.validate_image(wrong_image)
 
+        right_image = self.norm(right_image)
+        wrong_image = self.norm(wrong_image)
+
+        if self.transform is not None:
+            right_image = self.transform(right_image)
+            wrong_image = self.transform(wrong_image)
+
+       
         txt = np.array(example['txt']).astype(str)
 
         sample = {
-                'right_images': torch.FloatTensor(right_image),
+                'right_images': right_image,
                 'right_embed': torch.FloatTensor(right_embed),
-                'wrong_images': torch.FloatTensor(wrong_image),
+                'wrong_images': wrong_image,
                 'inter_embed': torch.FloatTensor(inter_embed),
                 'txt': str(txt)
                  }
-
-        sample['right_images'] = sample['right_images'].sub_(127.5).div_(127.5)
-        sample['wrong_images'] =sample['wrong_images'].sub_(127.5).div_(127.5)
 
         return sample
 

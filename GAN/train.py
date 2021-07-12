@@ -10,6 +10,8 @@ import wandb
 from torchvision.utils import make_grid
 import utils
 from tensorflow.python.platform import flags
+import torchvision.transforms as transforms
+
 
 FLAGS = flags.FLAGS
 
@@ -48,15 +50,20 @@ FLAGS = flags.FLAGS
 
 def train(FLAGS):
     if FLAGS.wandb:
-        run = wandb.init(project="Text2Image_C_DCGAN", config=FLAGS, name= FLAGS.experiment_name)
+        run = wandb.init(project="Text2Image_CON_DCGAN", config=FLAGS, name= FLAGS.experiment_name)
 
+    imsize = 64
+    image_transform = transforms.Compose([
+        transforms.Resize(int(imsize * 76 / 64)),
+        transforms.RandomCrop(imsize),
+        transforms.RandomHorizontalFlip()])
 
     dataset_add = '../dataset/'
     ## prepare Data
     if FLAGS.dataset == 'birds':
-        dataset = Text2ImageDataset(dataset_add+'birds.hdf5', split=0)  ##TODO split
+        dataset = Text2ImageDataset(dataset_add+'birds.hdf5', split=0, transform = image_transform )  ##TODO split
     elif FLAGS.dataset == 'flowers':
-        dataset = Text2ImageDataset(dataset_add+ 'flowers.hdf5', split=0) ##TODO split
+        dataset = Text2ImageDataset(dataset_add+ 'flowers.hdf5', split=0, transform = image_transform) ##TODO split
     else:
         raise ('Dataset not found')
 
@@ -114,10 +121,12 @@ def train(FLAGS):
             fake_loss = criterion(outputs, fake_labels)
             fake_score = outputs
 
-            d_loss = real_loss + fake_loss
+
 
             if FLAGS.cls:
-                d_loss = d_loss + wrong_loss
+                d_loss = real_loss + (fake_loss + wrong_loss) * 0.5
+            else:
+                d_loss = real_loss + fake_loss
 
             d_loss.backward()
             D_optimizer.step()
@@ -136,7 +145,7 @@ def train(FLAGS):
                 noise = noise.view(noise.size(0), 100, 1, 1)
                 fake_images_int = generator(noise, int_embed)
                 outputs_int = discriminator(fake_images_int, int_embed)
-                g_loss = 0.5 * (criterion(outputs_int, real_labels) + g_loss)
+                g_loss = criterion(outputs_int, real_labels) + g_loss
 
             g_loss.backward()
             G_optimizer.step()
