@@ -135,4 +135,4 @@ dataset/
 .vscode/
 project.*
 docker*
-
+*.ipynb

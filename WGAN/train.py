@@ -10,6 +10,7 @@ import wandb
 from torchvision.utils import make_grid
 import utils
 from tensorflow.python.platform import flags
+import torchvision.transforms as transforms
 
 FLAGS = flags.FLAGS
 
@@ -24,11 +25,7 @@ flags.DEFINE_integer('num_workers', 2, 'number of workers')
 flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 flags.DEFINE_integer("critic_repeats", 5, 'critic opt / generator opt')
-<<<<<<< HEAD
 flags.DEFINE_float("lambda1",10.0, "Gradient Penalty Coef")
-=======
-flags.DEFINE_float("labmda1",10.0, "Gradient Penalty Coef")
->>>>>>> 8e8cad6174fbc2b17d54b73808ab336a54b10a62
 flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
@@ -41,8 +38,8 @@ flags.DEFINE_string('wandb_key', '', 'wandb key for logging')
 
 flags.DEFINE_string("pre_trained_critic", '', 'pretrained critic path')
 flags.DEFINE_string("pre_trained_generator", '', 'pretrained generator path')
-
-
+flags.DEFINE_string("experiment_name", 'exp', 'the experiment name')
+flags.DEFINE_bool("inter", True, "embedding interpolation")
 
 
 FLAGS = flags.FLAGS
@@ -64,14 +61,20 @@ def grad_penalty(critic, real_img, fake_img, embed, epsilon):
 
 def train(FLAGS):
     if FLAGS.wandb:
-        run = wandb.init(project="Text2Image_C_WGAN", config=FLAGS)
+        run = wandb.init(project="Text2Image_CON_DCGAN", config=FLAGS, name=FLAGS.experiment_name)
+
+    imsize = 64
+    image_transform = transforms.Compose([
+        transforms.Resize(int(imsize * 76 / 64)),
+        transforms.RandomCrop(imsize),
+        transforms.RandomHorizontalFlip()])
 
     dataset_add = '../dataset/'
     ## prepare Data
     if FLAGS.dataset == 'birds':
-        dataset = Text2ImageDataset(dataset_add+'birds.hdf5', split=0)  ##TODO split
+        dataset = Text2ImageDataset(dataset_add + 'birds.hdf5', split=0, transform=image_transform)  ##TODO split
     elif FLAGS.dataset == 'flowers':
-        dataset = Text2ImageDataset(dataset_add+ 'flowers.hdf5', split=0) ##TODO split
+        dataset = Text2ImageDataset(dataset_add + 'flowers.hdf5', split=0, transform=image_transform)  ##TODO split
     else:
         raise ('Dataset not found')
 
@@ -124,14 +127,16 @@ def train(FLAGS):
                 gp = grad_penalty(critic=critic, real_img= right_images, fake_img= fake_images, embed=right_embed, epsilon=epsilon)
 
 
-                c_loss =  fake_loss - real_loss + FLAGS.lambda1 * gp
 
                 if FLAGS.cls:
-                    c_loss = c_loss + wrong_loss
+                    c_loss = 0.5 * (wrong_loss + fake_loss) - real_loss + FLAGS.lambda1 * gp
+                else:
+                    c_loss = fake_loss - real_loss + FLAGS.lambda1 * gp
 
                 c_loss.backward()
                 C_optimizer.step()
                 crit_loss_all += (c_loss / FLAGS.critic_repeats)
+
             # Train the generator
             generator.zero_grad()
 
@@ -139,33 +144,33 @@ def train(FLAGS):
             noise = noise.view(noise.size(0), 100, 1, 1)
             fake_images = generator(noise, right_embed)
             outputs = critic(fake_images, right_embed)
-            g_loss = -1 * torch.mean(outputs)
+            g_loss = -1 *   torch.mean(outputs)
 
             g_loss.backward()
             G_optimizer.step()
             if FLAGS.wandb:
-
                 if iteration % FLAGS.log_interval == 0:
-
-                    run.log({"Generator Loss": g_loss.mean(),
-                             "Discriminator Loss": crit_loss_all.mean(),
-                             "fake_critic": fake_loss,
-                             "real_critic": real_loss})
-                    if FLAGS.cls:
-                        run.log({"wrong_loss": wrong_loss})
 
                     real_image_grid = make_grid(right_images, nrow=8, pad_value=1)
                     fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
                     _real_img = wandb.Image(real_image_grid, caption="real_images")
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
+                    run.log({"Generator Loss": g_loss.mean(),
+                             "Discriminator Loss": crit_loss_all.mean(),
+                             "real_img": _real_img,
+                              "fake_img": _fake_img})
 
-                    run.log({"real_img": _real_img})
-                    run.log({"fake_img": _fake_img})
+
+        print(epoch)
+        if FLAGS.wandb:
+            run.log({"Generator Loss_e": g_loss.mean(),
+                     "Discriminator Loss_e": crit_loss_all.mean(),
+                     "epoch" : epoch})
 
 
 
         if (epoch) % FLAGS.cp_interval == 0:
-            utils.save_checkpoint(critic, generator, FLAGS.checkpoints_path, epoch, 'WGAN', FLAGS)
+            utils.save_checkpoint(critic, generator, FLAGS.checkpoints_path, epoch, FLAGS)
 
 def main():
     flags_dict = EasyDict()
