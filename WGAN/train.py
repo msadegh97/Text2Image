@@ -156,7 +156,7 @@ def train(FLAGS):
                     _real_img = wandb.Image(real_image_grid, caption="real_images")
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
                     run.log({"Generator Loss": g_loss.mean(),
-                             "Discriminator Loss": crit_loss_all.mean(),
+                             "Critic Loss": -crit_loss_all.mean(),
                              "real_img": _real_img,
                               "fake_img": _fake_img})
 
@@ -164,7 +164,7 @@ def train(FLAGS):
         print(epoch)
         if FLAGS.wandb:
             run.log({"Generator Loss_e": g_loss.mean(),
-                     "Discriminator Loss_e": crit_loss_all.mean(),
+                     "Critic Loss_e": - crit_loss_all.mean(),
                      "epoch" : epoch})
 
 

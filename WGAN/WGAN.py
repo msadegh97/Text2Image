@@ -67,25 +67,24 @@ class Critic(nn.Module):
 
         self.critic = nn.Sequential(
             # input is (nc) x 64 x 64
-            nn.Conv2d(self.num_channel, self.ndf, 4, 2, 1),
-            nn.GroupNorm(1, self.ndf),
+            nn.Conv2d(self.num_channel, self.ndf, 4, 2, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf) x 32 x 32
-            nn.Conv2d(self.ndf, self.ndf * 2, 4, 2, 1),
+            nn.Conv2d(self.ndf, self.ndf * 2, 4, 2, 1, bias=False),
             nn.GroupNorm(1,self.ndf * 2),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(self.ndf * 2, self.ndf * 4, 4, 2, 1),
+            nn.Conv2d(self.ndf * 2, self.ndf * 4, 4, 2, 1, bias=False),
             nn.GroupNorm(1, self.ndf * 4),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(self.ndf * 4, self.ndf * 8, 4, 2, 1),
+            nn.Conv2d(self.ndf * 4, self.ndf * 8, 4, 2, 1, bias=False),
             nn.GroupNorm(1, self.ndf * 8),
             nn.LeakyReLU(0.2, inplace=True),
             # state size. (ndf*8) x 4 x 4
         )
         self.emb_net = nn.Sequential(
-            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, 1, 4, 1, 0),
+            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, 1, 4, 1, 0, bias=False),
         )
 
     def forward(self, input, embed_vec):
@@ -94,5 +93,6 @@ class Critic(nn.Module):
         replicated_embed = projected_embed.repeat(4, 4, 1, 1).permute(2, 3, 0, 1)
         hidden_concat = torch.cat([output, replicated_embed], 1)
         output = self.emb_net(hidden_concat)
+        output = output.mean(0)
 
-        return output.view(-1,1)
+        return output.view(1)
