@@ -157,6 +157,7 @@ def train(FLAGS):
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
                     run.log({"Generator Loss": g_loss.mean(),
                              "Discriminator Loss": crit_loss_all.mean(),
+                             "W_dist": fake_loss - real_loss,
                              "real_img": _real_img,
                               "fake_img": _fake_img})
 
