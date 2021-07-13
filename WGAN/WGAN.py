@@ -93,6 +93,5 @@ class Critic(nn.Module):
         replicated_embed = projected_embed.repeat(4, 4, 1, 1).permute(2, 3, 0, 1)
         hidden_concat = torch.cat([output, replicated_embed], 1)
         output = self.emb_net(hidden_concat)
-        output = output.mean(0)
 
-        return output.view(1)
+        return output.view(-1,1).squeeze()
