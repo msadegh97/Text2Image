@@ -56,12 +56,12 @@ def grad_penalty(critic, real_img, fake_img, embed, epsilon):
     gradient = gradient.view(len(gradient), -1)
     gradient_norm = gradient.norm(2, dim=1)
     gp = torch.mean((gradient_norm - 1)**2)
-    return gp
+    return gp   
 
 
 def train(FLAGS):
     if FLAGS.wandb:
-        run = wandb.init(project="Text2Image_CON_WGAN", config=FLAGS, name=FLAGS.experiment_name)
+        run = wandb.init(project="Text2Image_CON_GGAN", config=FLAGS, name=FLAGS.experiment_name)
 
     imsize = 64
     image_transform = transforms.Compose([
@@ -86,7 +86,7 @@ def train(FLAGS):
 
 
     #set optimizers
-    C_optimizer = torch.optim.Adam(critic.parameters(), lr= FLAGS.lr, betas=(FLAGS.beta, 0.999))
+    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(FLAGS.beta, 0.999))
     G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(FLAGS.beta, 0.999))
 
 
@@ -105,47 +105,56 @@ def train(FLAGS):
             wrong_images = Variable(wrong_images.float()).cuda()
 
             # Train the Critic
-            crit_loss_all = 0
-            for i in range(FLAGS.critic_repeats):
-                critic.zero_grad()
-                outputs = critic(right_images, right_embed)
-                real_loss = torch.mean(outputs)
+            critic.zero_grad()
+            outputs = critic(right_images, right_embed)
+            real_loss = torch.nn.ReLU()(1.0 - outputs).mean()
 
-
-                if FLAGS.cls:
-                    outputs = critic(wrong_images, right_embed)
-                    wrong_loss = torch.mean(outputs)
-
-                noise = Variable(torch.randn(right_images.size(0), 100)).cuda()
-                noise = noise.view(noise.size(0), 100, 1, 1)
-                fake_images = generator(noise, right_embed)
-
-                outputs = critic(fake_images.detach(), right_embed)
-                fake_loss = torch.mean(outputs)
-
-                epsilon = torch.rand(len(right_images), 1, 1, 1, device='cuda', requires_grad=True)
-                gp = grad_penalty(critic=critic, real_img= right_images, fake_img= fake_images, embed=right_embed, epsilon=epsilon)
-
-
-
-                if FLAGS.cls:
-                    c_loss = 0.5 * (wrong_loss + fake_loss) - real_loss + FLAGS.lambda1 * gp
-                else:
-                    c_loss = fake_loss - real_loss + FLAGS.lambda1 * gp
-
-                c_loss.backward()
-                C_optimizer.step()
-                crit_loss_all += (c_loss.item() / FLAGS.critic_repeats)
-
-            # Train the generator
-            generator.zero_grad()
+            mis_match_outputs = critic(wrong_images, right_embed)
+            mis_match_loss = torch.nn.ReLU()(1.0 + mis_match_outputs).mean()
 
             noise = Variable(torch.randn(right_images.size(0), 100)).cuda()
             noise = noise.view(noise.size(0), 100, 1, 1)
             fake_images = generator(noise, right_embed)
-            outputs = critic(fake_images, right_embed)
-            g_loss = -1 *   torch.mean(outputs)
 
+            fake_outputs = critic(fake_images.detach(), right_embed)
+            fake_loss = torch.nn.ReLU()(1.0 + fake_outputs).mean()
+
+            c_loss = real_loss + (fake_loss + mis_match_loss)/2.0
+
+            c_loss.backward()
+            C_optimizer.step()
+
+            #MA-GP
+            interpolated = (right_images.data).requires_grad_()
+            sent_inter = (right_embed.data).requires_grad_()
+            out = critic(interpolated, sent_inter)
+
+            grads = torch.autograd.grad(outputs=out,
+                                        inputs=(interpolated, sent_inter),
+                                        grad_outputs=torch.ones(out.size()).cuda(),
+                                        retain_graph=True,
+                                        create_graph=True,
+                                        only_inputs=True)
+            grad0 = grads[0].view(grads[0].size(0), -1)
+            grad1 = grads[1].view(grads[1].size(0), -1)
+            grad = torch.cat((grad0, grad1), dim=1)
+            grad_l2norm = torch.sqrt(torch.sum(grad ** 2, dim=1))
+            d_loss_gp = torch.mean((grad_l2norm) ** 6)
+            d_loss = 2.0 * d_loss_gp
+            C_optimizer.zero_grad()
+            G_optimizer.zero_grad()
+            d_loss.backward()
+            C_optimizer.step()
+
+
+
+
+            # Train the generator
+
+            outputs = critic(fake_images, right_embed)
+            g_loss = - torch.mean(outputs)
+            C_optimizer.zero_grad()
+            G_optimizer.zero_grad()
             g_loss.backward()
             G_optimizer.step()
             if FLAGS.wandb:
@@ -155,16 +164,16 @@ def train(FLAGS):
                     fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
                     _real_img = wandb.Image(real_image_grid, caption="real_images")
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
-                    run.log({"Generator Loss": g_loss.mean(),
-                             "Critic Loss": -crit_loss_all.mean(),
+                    run.log({"Generator Loss": g_loss.item(),
+                             "Critic Loss": c_loss.item(),
                              "real_img": _real_img,
                               "fake_img": _fake_img})
 
 
         print(epoch)
         if FLAGS.wandb:
-            run.log({"Generator Loss_e": g_loss.mean(),
-                     "Critic Loss_e": - crit_loss_all.mean(),
+            run.log({"Generator Loss_e": g_loss.item(),
+                     "Critic Loss_e":  c_loss.item(),
                      "epoch" : epoch})
 
 
