@@ -56,7 +56,7 @@ def grad_penalty(critic, real_img, fake_img, embed, epsilon):
     gradient = gradient.view(len(gradient), -1)
     gradient_norm = gradient.norm(2, dim=1)
     gp = torch.mean((gradient_norm - 1)**2)
-    return gp   
+    return gp
 
 
 def train(FLAGS):
