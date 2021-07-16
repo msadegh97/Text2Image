@@ -59,11 +59,6 @@ class Critic(nn.Module):
         self.embed_dim = embed_dim
         self.projected_embed_dim = proj_embed_dim
 
-        self.projection = nn.Sequential(
-            nn.Linear(in_features=self.embed_dim, out_features=self.projected_embed_dim),
-            nn.BatchNorm1d(num_features=self.projected_embed_dim),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
-        )
 
         self.critic = nn.Sequential(
             # input is (nc) x 64 x 64
@@ -84,15 +79,17 @@ class Critic(nn.Module):
             # state size. (ndf*8) x 4 x 4
         )
         self.emb_net = nn.Sequential(
-            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, 1, 4, 1, 0, bias=False),
+            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, self.ndf * 2, 4, 1, 0, bias=False),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(self.ndf * 2, 1, 4, 1, 0, bias=False),
         )
 
-    def forward(self, input, embed_vec):
-        output = self.critic(input)
-        projected_embed = self.projection(embed_vec)
-        replicated_embed = projected_embed.repeat(4, 4, 1, 1).permute(2, 3, 0, 1)
-        hidden_concat = torch.cat([output, replicated_embed], 1)
+    def forward(self, out, embed_vec):
+
+        output = self.critic(out)
+        embed_vec = embed_vec.view(-1, 256, 1,1)
+        embed_vec = embed_vec.repeat(1, 1, 4, 4)
+        hidden_concat = torch.cat((output, embed_vec), 1)
         output = self.emb_net(hidden_concat)
 
         return output.view(-1,1).squeeze()
-
