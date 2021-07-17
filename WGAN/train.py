@@ -72,13 +72,25 @@ def train(FLAGS):
     dataset_add = '../dataset/'
     ## prepare Data
     if FLAGS.dataset == 'birds':
-        dataset = Text2ImageDataset(dataset_add + 'birds.hdf5', split=0, transform=image_transform)  ##TODO split
-    elif FLAGS.dataset == 'flowers':
-        dataset = Text2ImageDataset(dataset_add + 'flowers.hdf5', split=0, transform=image_transform)  ##TODO split
+        dataset = TextDataset(dataset_add + "birds",
+                              'train',
+                              base_size=64,
+                              transform=image_transform)
     else:
         raise ('Dataset not found')
 
-    data_loader = DataLoader(dataset, batch_size=FLAGS.batch_size, shuffle=True, num_workers=FLAGS.num_workers)
+    data_loader = DataLoader(dataset, batch_size=FLAGS.batch_size, shuffle=True, num_workers=FLAGS.num_workers,
+                             drop_last=True)
+
+    # init emb model
+    text_encoder = RNN_ENCODER(dataset.n_words, nhidden=256)
+    state_dict = torch.load("../emb_model/bird/text_encoder200.pth", map_location=lambda storage, loc: storage)
+    text_encoder.load_state_dict(state_dict)
+    text_encoder.cuda()
+
+    for p in text_encoder.parameters():
+        p.requires_grad = False
+    text_encoder.eval()
 
     ##init modedls
     generator = torch.nn.DataParallel(Generator(z_dim=FLAGS.z_dim, proj_ebmed_dim=FLAGS.proj_embed_dim, embed_dim=FLAGS.embed_dim).cuda(), range(FLAGS.ngpu))
@@ -96,35 +108,35 @@ def train(FLAGS):
     for epoch in range(FLAGS.num_epochs):
         for sample in data_loader:
             iteration += 1
-            right_images = sample['right_images']
-            right_embed = sample['right_embed']
-            wrong_images = sample['wrong_images']
+            imags, captions, cap_lens, class_ids, keys = prepare_data(data)
+            hidden = text_encoder.init_hidden(FLAGS.batch_size)
 
-            right_images = Variable(right_images.float()).cuda()
-            right_embed = Variable(right_embed.float()).cuda()
-            wrong_images = Variable(wrong_images.float()).cuda()
+            words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+            words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
+
+            real_image = imags[0].to('cuda')
 
             # Train the Critic
             crit_loss_all = 0
             for i in range(FLAGS.critic_repeats):
                 critic.zero_grad()
-                outputs = critic(right_images, right_embed)
+                outputs = critic(real_image, sent_emb)
                 real_loss = torch.mean(outputs)
 
 
                 if FLAGS.cls:
-                    outputs = critic(wrong_images, right_embed)
+                    outputs = critic(real_image[:(FLAGS.batch_size - 1)], sent_emb[1:FLAGS.batch_size])
                     wrong_loss = torch.mean(outputs)
 
-                noise = Variable(torch.randn(right_images.size(0), 100)).cuda()
+                noise = Variable(torch.randn(real_image.size(0), 100)).cuda()
                 noise = noise.view(noise.size(0), 100, 1, 1)
-                fake_images = generator(noise, right_embed)
+                fake_images = generator(noise, sent_emb)
 
-                outputs = critic(fake_images.detach(), right_embed)
+                outputs = critic(fake_images.detach(), sent_emb)
                 fake_loss = torch.mean(outputs)
 
-                epsilon = torch.rand(len(right_images), 1, 1, 1, device='cuda', requires_grad=True)
-                gp = grad_penalty(critic=critic, real_img= right_images, fake_img= fake_images, embed=right_embed, epsilon=epsilon)
+                epsilon = torch.rand(len(real_image), 1, 1, 1, device='cuda', requires_grad=True)
+                gp = grad_penalty(critic=critic, real_img= real_image, fake_img= fake_images, embed=sent_emb, epsilon=epsilon)
 
 
 
@@ -132,7 +144,8 @@ def train(FLAGS):
                     c_loss = 0.5 * (wrong_loss + fake_loss) - real_loss + FLAGS.lambda1 * gp
                 else:
                     c_loss = fake_loss - real_loss + FLAGS.lambda1 * gp
-
+                C_optimizer.zero_grad()
+                G_optimizer.zero_grad()
                 c_loss.backward()
                 C_optimizer.step()
                 crit_loss_all += (c_loss.item() / FLAGS.critic_repeats)
@@ -140,32 +153,30 @@ def train(FLAGS):
             # Train the generator
             generator.zero_grad()
 
-            noise = Variable(torch.randn(right_images.size(0), 100)).cuda()
-            noise = noise.view(noise.size(0), 100, 1, 1)
-            fake_images = generator(noise, right_embed)
-            outputs = critic(fake_images, right_embed)
-            g_loss = -1 *   torch.mean(outputs)
-
+            outputs = critic(fake_images, sent_emb)
+            g_loss = - outputs.mean()
+            C_optimizer.zero_grad()
+            G_optimizer.zero_grad()
             g_loss.backward()
             G_optimizer.step()
             if FLAGS.wandb:
                 if iteration % FLAGS.log_interval == 0:
 
-                    real_image_grid = make_grid(right_images, nrow=8, pad_value=1)
+                    real_image_grid = make_grid(real_image, nrow=8, pad_value=1)
                     fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
                     _real_img = wandb.Image(real_image_grid, caption="real_images")
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
-                    run.log({"Generator Loss": g_loss.mean(),
-                             "W_dist": fake_loss - real_loss,
-                             "Critic Loss": -crit_loss_all.mean(),
+                    run.log({"Generator Loss": g_loss.item(),
+                             "W_dist": fake_loss.item() - real_loss.item(),
+                             "Critic Loss": -crit_loss_all.item(),
                              "real_img": _real_img,
                               "fake_img": _fake_img})
 
 
         print(epoch)
         if FLAGS.wandb:
-            run.log({"Generator Loss_e": g_loss.mean(),
-                     "Critic Loss_e": - crit_loss_all.mean(),
+            run.log({"Generator Loss_e": g_loss.item(),
+                     "Critic Loss_e": - crit_loss_all.item(),
                      "epoch" : epoch})
 
 
