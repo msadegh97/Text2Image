@@ -31,7 +31,7 @@ flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 flags.DEFINE_integer("critic_repeats", 5, 'critic opt / generator opt')
 flags.DEFINE_float("lambda1",10.0, "Gradient Penalty Coef")
-flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
+flags.DEFINE_integer("embed_dim", 256, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
@@ -90,7 +90,7 @@ def train(FLAGS):
 
     #init emb model
     text_encoder = RNN_ENCODER(dataset.n_words, nhidden= 256)
-    state_dict = torch.load("../emb_model/text_encoder200.pth'", map_location=lambda storage, loc: storage)
+    state_dict = torch.load("../emb_model/bird/text_encoder200.pth", map_location=lambda storage, loc: storage)
     text_encoder.load_state_dict(state_dict)
     text_encoder.cuda()
 
@@ -103,8 +103,8 @@ def train(FLAGS):
 
 
     #set optimizers
-    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(FLAGS.beta, 0.999))
-    G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(FLAGS.beta, 0.999))
+    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(0.5, 0.99))
+    G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(0.5, 0.99))
 
 
 
@@ -121,7 +121,7 @@ def train(FLAGS):
 
             real_image=imags[0].to('cuda')
 
-            # iteration += 1
+            iteration += 1
             # right_images = sample['right_images']
             # right_embed = sample['right_embed']
             # wrong_images = sample['wrong_images']

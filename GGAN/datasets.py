@@ -92,8 +92,8 @@ class TextDataset(data.Dataset):
                  transform=None, target_transform=None):
         self.transform = transform
         self.norm = transforms.Compose([
-            transforms.ToTensor()])
-            # transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         self.target_transform = target_transform
         self.embeddings_num = cfg.TEXT.CAPTIONS_PER_IMAGE
 

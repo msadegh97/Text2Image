@@ -79,7 +79,7 @@ class Critic(nn.Module):
             # state size. (ndf*8) x 4 x 4
         )
         self.emb_net = nn.Sequential(
-            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, self.ndf * 2, 4, 1, 0, bias=False),
+            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, self.ndf * 2, 3, 1, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(self.ndf * 2, 1, 4, 1, 0, bias=False),
         )
