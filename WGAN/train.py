@@ -18,7 +18,7 @@ flags.DEFINE_integer('ngpu', 1, 'number of GPUs')
 flags.DEFINE_string('dataset', 'birds', 'name of dataset (birds or flowers)')
 flags.DEFINE_integer('z_dim', 100, 'Input noise dimension')
 flags.DEFINE_integer('batch_size', 64, 'Batch size')
-flags.DEFINE_float('lr', 0.0002, 'learning rate')
+flags.DEFINE_float('lr', 0.0001, 'learning rate')
 flags.DEFINE_float('beta', 0.5, 'beta')
 flags.DEFINE_integer('num_epochs', 200, 'number of epochs')
 flags.DEFINE_integer('num_workers', 2, 'number of workers')
@@ -98,7 +98,7 @@ def train(FLAGS):
 
 
     #set optimizers
-    C_optimizer = torch.optim.Adam(critic.parameters(), lr= FLAGS.lr, betas=(FLAGS.beta, 0.999))
+    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(FLAGS.beta, 0.999))
     G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(FLAGS.beta, 0.999))
 
 
