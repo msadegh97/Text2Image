@@ -136,3 +136,4 @@ dataset/
 project.*
 docker*
 *.ipynb
+emb_model/
