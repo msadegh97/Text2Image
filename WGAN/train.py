@@ -12,6 +12,10 @@ import utils
 from tensorflow.python.platform import flags
 import torchvision.transforms as transforms
 
+from datasets import TextDataset
+from datasets import prepare_data
+
+from DAMSM import RNN_ENCODER
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('ngpu', 1, 'number of GPUs')
@@ -106,7 +110,7 @@ def train(FLAGS):
     iteration = 0
 
     for epoch in range(FLAGS.num_epochs):
-        for sample in data_loader:
+        for data in data_loader:
             iteration += 1
             imags, captions, cap_lens, class_ids, keys = prepare_data(data)
             hidden = text_encoder.init_hidden(FLAGS.batch_size)
