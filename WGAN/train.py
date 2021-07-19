@@ -30,7 +30,7 @@ flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 flags.DEFINE_integer("critic_repeats", 5, 'critic opt / generator opt')
 flags.DEFINE_float("lambda1",10.0, "Gradient Penalty Coef")
-flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
+flags.DEFINE_integer("embed_dim", 256, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
@@ -140,7 +140,12 @@ def train(FLAGS):
                 fake_loss = torch.mean(outputs)
 
                 epsilon = torch.rand(len(real_image), 1, 1, 1, device='cuda', requires_grad=True)
-                gp = grad_penalty(critic=critic, real_img= real_image, fake_img= fake_images, embed=sent_emb, epsilon=epsilon)
+
+                real_img_inter = (real_image.data).requires_grad_()
+                fake_img_inter = (fake_images.data).requires_grad_()
+                sent_inter = (sent_emb.data).requires_grad_()
+
+                gp = grad_penalty(critic=critic, real_img= real_img_inter, fake_img= fake_img_inter, embed=sent_inter, epsilon=epsilon)
 
 
 
@@ -172,7 +177,7 @@ def train(FLAGS):
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
                     run.log({"Generator Loss": g_loss.item(),
                              "W_dist": fake_loss.item() - real_loss.item(),
-                             "Critic Loss": -crit_loss_all.item(),
+                             "Critic Loss": -crit_loss_all,
                              "real_img": _real_img,
                               "fake_img": _fake_img})
 
@@ -180,7 +185,7 @@ def train(FLAGS):
         print(epoch)
         if FLAGS.wandb:
             run.log({"Generator Loss_e": g_loss.item(),
-                     "Critic Loss_e": - crit_loss_all.item(),
+                     "Critic Loss_e": - crit_loss_all,
                      "epoch" : epoch})
 
 
