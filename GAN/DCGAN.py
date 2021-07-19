@@ -4,7 +4,7 @@ from torch import  nn
 
 # code is based on Pytorch DCGAN Implementation:
 class Generator(nn.Module):
-    def __init__(self, z_dim = 100, num_channels =3, embed_dim=256, img_size= 64, proj_ebmed_dim = 128):
+    def __init__(self, z_dim = 100, num_channels =3, embed_dim=256, img_size= 64, proj_ebmed_dim = 256):
         super(Generator, self).__init__()
         self.z_dim = z_dim
         self.embed_dim = embed_dim
@@ -51,7 +51,7 @@ class Generator(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, num_channel= 3, img_size= 64, proj_embed_dim = 128, embed_dim= 1024):
+    def __init__(self, num_channel= 3, img_size= 64, proj_embed_dim = 256, embed_dim= 256):
         super(Discriminator, self).__init__()
         self.ndf = 64
         self.num_channel = num_channel
@@ -86,7 +86,7 @@ class Discriminator(nn.Module):
         self.emb_net = nn.Sequential(
             nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, self.ndf * 2, 3, 1, 1, bias=False),
             nn.LeakyReLU(0.2, inplace=True),
-            nn.Conv2d(self.ndf * 8 + self.projected_embed_dim, 1, 4, 1, 0, bias=False),
+            nn.Conv2d(self.ndf * 2, 1, 4, 1, 0, bias=False),
             nn.Sigmoid()
         )
 
