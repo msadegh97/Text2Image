@@ -201,7 +201,7 @@ def main():
         flags_dict[key] = getattr(FLAGS, key)
     if flags_dict.wandb:
         os.environ['WANDB_API_KEY'] = "7a44e6f35f9bf51e15cefc85c9c65093fc9c5d87"  #TODO replace with FLAGS.wandb_key
-        os.environ['WANDB_CONFIG_DIR'] = '/home/hlcv_team019/code/'
+        os.environ['WANDB_CONFIG_DIR'] = '/home/hlcv_team047/code/'
 
     train(flags_dict)
 
