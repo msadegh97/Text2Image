@@ -34,7 +34,7 @@ flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 
 flags.DEFINE_integer("embed_dim", 256, "text embedding dim")
-flags.DEFINE_integer("proj_embed_dim", 128, "projected text embedding dim")
+flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
 flags.DEFINE_integer("log_interval", 10, 'log intervals (steps)')
