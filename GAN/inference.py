@@ -49,6 +49,13 @@ flags.DEFINE_string("gen_dir", '', 'pretrained generator path')
 flags.DEFINE_string("experiment_name", 'exp', 'the experiment name')
 
 def sample_img(FLAGS):
+    
+    import random
+    random.seed(1)
+    torch.manual_seed(1)
+    torch.cuda.manual_seed(1)
+    torch.cuda.manual_seed_all(1)
+    
     imsize = 64
     image_transform = transforms.Compose([
         transforms.Resize(int(imsize * 76 / 64)),
@@ -96,9 +103,8 @@ def sample_img(FLAGS):
             hidden = text_encoder.init_hidden(batch_size)
             words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
             words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
-            #######################################################
-            # (2) Generate fake images
-            ######################################################
+            
+            #generate fake image
             with torch.no_grad():
                # noise = torch.randn(batch_size, 100).cuda()
                 
@@ -106,7 +112,7 @@ def sample_img(FLAGS):
                 noise = noise.view(noise.size(0), 100, 1, 1)
                 fake_imgs = netG(noise, sent_emb)
             for j in range(batch_size):
-                s_tmp =  FLAGS.img_save_dir + FLAGS.experiment_name + '/'+ str(j)+ "_" + str(step) #keys[j]
+                s_tmp =  FLAGS.img_save_dir + FLAGS.experiment_name + '/'+ str(j)+ "_" + keys[j][keys[j].rfind('/')+1 :]
                 im = fake_imgs[j].data.cpu().numpy()
                 im = (im + 1.0) * 127.5
                 #MEAN = torch.tensor([0.5, 0.5, 0.5])
@@ -116,6 +122,7 @@ def sample_img(FLAGS):
                 im = np.transpose(im, (1, 2, 0))
                 im = Image.fromarray(im)
                 im.save(s_tmp+'.png', 'png')
+            break
 
 
 #
