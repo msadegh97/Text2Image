@@ -137,3 +137,4 @@ project.*
 docker*
 *.ipynb
 emb_model/
+img/
