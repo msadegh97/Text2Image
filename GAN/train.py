@@ -26,7 +26,7 @@ flags.DEFINE_integer('ngpu', 1, 'number of GPUs')
 flags.DEFINE_string('dataset', 'birds', 'name of dataset (birds or flowers)')
 flags.DEFINE_integer('z_dim', 100, 'Input noise dimension')
 flags.DEFINE_integer('batch_size', 64, 'Batch size')
-flags.DEFINE_float('lr', 0.0002, 'learning rate')
+flags.DEFINE_float('lr', 0.0001, 'learning rate')
 flags.DEFINE_float('beta', 0.5, 'beta')
 flags.DEFINE_integer('num_epochs', 200, 'number of epochs')
 flags.DEFINE_integer('num_workers', 2, 'number of workers')
@@ -37,7 +37,7 @@ flags.DEFINE_integer("embed_dim", 256, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
-flags.DEFINE_integer("log_interval", 10, 'log intervals (steps)')
+flags.DEFINE_integer("log_interval", 200, 'log intervals (steps)')
 
 flags.DEFINE_bool("wandb", False, "Using wandb for logging")
 flags.DEFINE_string('wandb_key', '', 'wandb key for logging')
@@ -126,7 +126,7 @@ def train(FLAGS):
             real_score = outputs
 
             if FLAGS.cls:
-                outputs = discriminator(real_image[:(FLAGS.batch_size - 1)], sent_emb[1:FLAGS.batch_size])
+                outputs = discriminator(real_image, sent_emb.flip(0))
                 wrong_loss = criterion(outputs, fake_labels)
                 wrong_score = outputs
 
@@ -154,12 +154,12 @@ def train(FLAGS):
             g_loss = criterion(outputs, real_labels)
 
             if FLAGS.inter:
-                noise = Variable(torch.randn(int_embed.size(0), 100)).cuda()
+                noise = Variable(torch.randn(real_image.size(0), 100)).cuda()
                 noise = noise.view(noise.size(0), 100, 1, 1)
-                int_embed = (sent_emb + sent_emb[::-1])/2
+                int_embed = (sent_emb + sent_emb.flip(0))/2
                 fake_images_int = generator(noise, int_embed)
                 outputs_int = discriminator(fake_images_int, int_embed)
-                g_loss = criterion(outputs_int, real_labels) + g_loss
+                g_loss = (criterion(outputs_int, real_labels) + g_loss)/2
 
             D_optimizer.zero_grad()
             G_optimizer.zero_grad()
@@ -176,8 +176,8 @@ def train(FLAGS):
 
                     run.log({"Generator Loss": g_loss.item(),
                              "Discriminator Loss": d_loss.item(),
-                             "Real Score": real_score.item(),
-                             "Fake Score": fake_score.item(),
+                             "Real Score": real_score.mean(),
+                             "Fake Score": fake_score.mean(),
                              "real_img": _real_img,
                              "fake_img": _fake_img})
 
@@ -186,8 +186,9 @@ def train(FLAGS):
         if FLAGS.wandb:
             run.log({"Generator Loss_e": g_loss.item(),
                      "Discriminator Loss_e": d_loss.item(),
-                     "Real Score_e": real_score.item(),
-                     "Fake Score_e": fake_score.item()})
+                     "Real Score_e": real_score.mean(),
+                     "Fake Score_e": fake_score.mean(),
+                     "epoch": epoch})
 
         if (epoch) % FLAGS.cp_interval == 0:
             utils.save_checkpoint(discriminator, generator, FLAGS.checkpoints_path, epoch, FLAGS)
