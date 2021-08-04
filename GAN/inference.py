@@ -6,7 +6,7 @@ from tensorflow.python.platform import flags
 from torch.utils.data import DataLoader
 from easydict import EasyDict
 from texttoimageloader import Text2ImageDataset
-from WGAN import Generator
+from DCGAN import Generator
 import os
 import torchvision.transforms as transforms
 from torch.autograd import Variable
@@ -49,11 +49,12 @@ flags.DEFINE_string("gen_dir", '', 'pretrained generator path')
 flags.DEFINE_string("experiment_name", 'exp', 'the experiment name')
 
 def sample_img(FLAGS):
-    # import random
-    # random.seed(1)
-    # torch.manual_seed(1)
-    # torch.cuda.manual_seed(1)
-    # torch.cuda.manual_seed_all(1)
+    
+    import random
+    random.seed(1)
+    torch.manual_seed(1)
+    torch.cuda.manual_seed(1)
+    torch.cuda.manual_seed_all(1)
     
     imsize = 64
     image_transform = transforms.Compose([
@@ -102,9 +103,8 @@ def sample_img(FLAGS):
             hidden = text_encoder.init_hidden(batch_size)
             words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
             words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
-            #######################################################
-            # (2) Generate fake images
-            ######################################################
+            
+            #generate fake image
             with torch.no_grad():
                # noise = torch.randn(batch_size, 100).cuda()
                 
@@ -122,7 +122,7 @@ def sample_img(FLAGS):
                 im = np.transpose(im, (1, 2, 0))
                 im = Image.fromarray(im)
                 im.save(s_tmp+'.png', 'png')
-            # break
+            break
 
 
 #

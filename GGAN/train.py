@@ -11,7 +11,12 @@ from torchvision.utils import make_grid
 import utils
 from tensorflow.python.platform import flags
 import torchvision.transforms as transforms
+from miscc.config import cfg, cfg_from_file
 
+from datasets import TextDataset
+from datasets import prepare_data
+
+from DAMSM import RNN_ENCODER
 FLAGS = flags.FLAGS
 
 flags.DEFINE_integer('ngpu', 1, 'number of GPUs')
@@ -26,7 +31,7 @@ flags.DEFINE_bool('cls', True, 'add wrong image loss')
 flags.DEFINE_string("checkpoints_path", './models/', 'checkpoints_path')
 flags.DEFINE_integer("critic_repeats", 5, 'critic opt / generator opt')
 flags.DEFINE_float("lambda1",10.0, "Gradient Penalty Coef")
-flags.DEFINE_integer("embed_dim", 1024, "text embedding dim")
+flags.DEFINE_integer("embed_dim", 256, "text embedding dim")
 flags.DEFINE_integer("proj_embed_dim", 256, "projected text embedding dim")
 
 flags.DEFINE_integer("cp_interval", 10, 'checkpoint intervals (epochs)')
@@ -70,53 +75,74 @@ def train(FLAGS):
         transforms.RandomHorizontalFlip()])
 
     dataset_add = '../dataset/'
+
     ## prepare Data
     if FLAGS.dataset == 'birds':
-        dataset = Text2ImageDataset(dataset_add + 'birds.hdf5', split=0, transform=image_transform)  ##TODO split
-    elif FLAGS.dataset == 'flowers':
-        dataset = Text2ImageDataset(dataset_add + 'flowers.hdf5', split=0, transform=image_transform)  ##TODO split
+        dataset = TextDataset(dataset_add + "birds",
+                              'train',
+                              base_size=64,
+                              transform=image_transform)
     else:
         raise ('Dataset not found')
 
-    data_loader = DataLoader(dataset, batch_size=FLAGS.batch_size, shuffle=True, num_workers=FLAGS.num_workers)
+    data_loader = DataLoader(dataset, batch_size=FLAGS.batch_size, shuffle=True, num_workers=FLAGS.num_workers,  drop_last=True)
 
+
+    #init emb model
+    text_encoder = RNN_ENCODER(dataset.n_words, nhidden= 256)
+    state_dict = torch.load("../emb_model/bird/text_encoder200.pth", map_location=lambda storage, loc: storage)
+    text_encoder.load_state_dict(state_dict)
+    text_encoder.cuda()
+
+    for p in text_encoder.parameters():
+        p.requires_grad = False
+    text_encoder.eval()
     ##init modedls
     generator = torch.nn.DataParallel(Generator(z_dim=FLAGS.z_dim, proj_ebmed_dim=FLAGS.proj_embed_dim, embed_dim=FLAGS.embed_dim).cuda(), range(FLAGS.ngpu))
     critic = torch.nn.DataParallel(Critic(proj_embed_dim=FLAGS.proj_embed_dim, embed_dim=FLAGS.embed_dim ).cuda(), range(FLAGS.ngpu))
 
 
     #set optimizers
-    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(FLAGS.beta, 0.999))
-    G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(FLAGS.beta, 0.999))
+    C_optimizer = torch.optim.Adam(critic.parameters(), lr= 4*FLAGS.lr, betas=(0.5, 0.99))
+    G_optimizer = torch.optim.Adam(generator.parameters(), lr=FLAGS.lr, betas=(0.5, 0.99))
 
 
 
     iteration = 0
 
     for epoch in range(FLAGS.num_epochs):
-        for sample in data_loader:
-            iteration += 1
-            right_images = sample['right_images']
-            right_embed = sample['right_embed']
-            wrong_images = sample['wrong_images']
+        for data in data_loader:
 
-            right_images = Variable(right_images.float()).cuda()
-            right_embed = Variable(right_embed.float()).cuda()
-            wrong_images = Variable(wrong_images.float()).cuda()
+            imags, captions, cap_lens, class_ids, keys = prepare_data(data)
+            hidden = text_encoder.init_hidden(FLAGS.batch_size)
+
+            words_embs, sent_emb = text_encoder(captions, cap_lens, hidden)
+            words_embs, sent_emb = words_embs.detach(), sent_emb.detach()
+
+            real_image=imags[0].to('cuda')
+
+            iteration += 1
+            # right_images = sample['right_images']
+            # right_embed = sample['right_embed']
+            # wrong_images = sample['wrong_images']
+            #
+            # right_images = Variable(right_images.float()).cuda()
+            # right_embed = Variable(right_embed.float()).cuda()
+            # wrong_images = Variable(wrong_images.float()).cuda()
 
             # Train the Critic
             critic.zero_grad()
-            outputs = critic(right_images, right_embed)
+            outputs = critic(real_image, sent_emb)
             real_loss = torch.nn.ReLU()(1.0 - outputs).mean()
 
-            mis_match_outputs = critic(wrong_images, right_embed)
+            mis_match_outputs = critic(real_image[:(FLAGS.batch_size - 1)], sent_emb[1:FLAGS.batch_size])
             mis_match_loss = torch.nn.ReLU()(1.0 + mis_match_outputs).mean()
 
-            noise = Variable(torch.randn(right_images.size(0), 100)).cuda()
+            noise = Variable(torch.randn(real_image.size(0), 100)).cuda()
             noise = noise.view(noise.size(0), 100, 1, 1)
-            fake_images = generator(noise, right_embed)
+            fake_images = generator(noise, sent_emb)
 
-            fake_outputs = critic(fake_images.detach(), right_embed)
+            fake_outputs = critic(fake_images.detach(), sent_emb)
             fake_loss = torch.nn.ReLU()(1.0 + fake_outputs).mean()
 
             c_loss = real_loss + (fake_loss + mis_match_loss)/2.0
@@ -125,8 +151,8 @@ def train(FLAGS):
             C_optimizer.step()
 
             #MA-GP
-            interpolated = (right_images.data).requires_grad_()
-            sent_inter = (right_embed.data).requires_grad_()
+            interpolated = (real_image.data).requires_grad_()
+            sent_inter = (sent_emb.data).requires_grad_()
             out = critic(interpolated, sent_inter)
 
             grads = torch.autograd.grad(outputs=out,
@@ -151,7 +177,7 @@ def train(FLAGS):
 
             # Train the generator
 
-            outputs = critic(fake_images, right_embed)
+            outputs = critic(fake_images, sent_emb)
             g_loss = - torch.mean(outputs)
             C_optimizer.zero_grad()
             G_optimizer.zero_grad()
@@ -160,7 +186,7 @@ def train(FLAGS):
             if FLAGS.wandb:
                 if iteration % FLAGS.log_interval == 0:
 
-                    real_image_grid = make_grid(right_images, nrow=8, pad_value=1)
+                    real_image_grid = make_grid(real_image, nrow=8, pad_value=1)
                     fake_image_grid = make_grid(fake_images, nrow=8, pad_value=1)
                     _real_img = wandb.Image(real_image_grid, caption="real_images")
                     _fake_img = wandb.Image(fake_image_grid, caption="fake_images")
