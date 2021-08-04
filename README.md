@@ -8,6 +8,13 @@
 #### Text to image synthesis
 ![](images/cls_.png)
 ### How To RUN
+```
+git clone https://github.com/msadegh97/Text2Image.git
+cd Text2Image/GGAN/
+python3 run.sh
+```
+##### For computing Inception Score we used the following repo:
+[https://github.com/hanzhanggit/StackGAN-inception-model](https://github.com/hanzhanggit/StackGAN-inception-model)  
 
 ### References
 
